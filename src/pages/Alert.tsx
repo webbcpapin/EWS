@@ -20,17 +20,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { demoArticles } from "@/data/demoData";
+import { useArticles } from "@/hooks/useArticles";
 import { cn } from "@/lib/utils";
 
 export default function Alert() {
+  const { articles } = useArticles();
   const navigate = useNavigate();
   const [riskFilter, setRiskFilter] = useState("Semua");
   const [sortField, setSortField] = useState<"skorRelevansi" | "tanggalTerbit">("skorRelevansi");
   const [sortDesc, setSortDesc] = useState(true);
 
   const alertArticles = useMemo(() => {
-    let data = demoArticles.filter(
+    let data = articles.filter(
       (a) => a.levelRisiko === "Kritis" || a.levelRisiko === "Tinggi" || a.skorRelevansi >= 60
     );
 
@@ -51,14 +52,14 @@ export default function Alert() {
   }, [riskFilter, sortField, sortDesc]);
 
   const summary = useMemo(() => {
-    const kritis = demoArticles.filter((a) => a.levelRisiko === "Kritis").length;
-    const tinggi = demoArticles.filter((a) => a.levelRisiko === "Tinggi").length;
-    const sedang = demoArticles.filter((a) => a.levelRisiko === "Sedang").length;
-    const menunggu = demoArticles.filter(
+    const kritis = articles.filter((a) => a.levelRisiko === "Kritis").length;
+    const tinggi = articles.filter((a) => a.levelRisiko === "Tinggi").length;
+    const sedang = articles.filter((a) => a.levelRisiko === "Sedang").length;
+    const menunggu = articles.filter(
       (a) => (a.levelRisiko === "Kritis" || a.levelRisiko === "Tinggi") && a.validationStatus === "Baru"
     ).length;
     return { kritis, tinggi, sedang, menunggu };
-  }, []);
+  }, [articles]);
 
   return (
     <div className="space-y-5">

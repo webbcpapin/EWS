@@ -17,40 +17,41 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { demoArticles } from "@/data/demoData";
+import { useArticles } from "@/hooks/useArticles";
 import { cn } from "@/lib/utils";
 
 export default function Home() {
+  const { articles } = useArticles();
   const navigate = useNavigate();
 
   const stats = useMemo(() => {
-    const total = demoArticles.length;
-    const relevan = demoArticles.filter((a) => a.skorRelevansi >= 60).length;
-    const prioritas = demoArticles.filter((a) => a.statusRelevansi === "Prioritas Tinggi").length;
-    const kritis = demoArticles.filter((a) => a.levelRisiko === "Kritis").length;
-    const baru = demoArticles.filter((a) => a.validationStatus === "Baru").length;
-    const selesai = demoArticles.filter((a) => a.validationStatus === "Selesai").length;
+    const total = articles.length;
+    const relevan = articles.filter((a) => a.skorRelevansi >= 60).length;
+    const prioritas = articles.filter((a) => a.statusRelevansi === "Prioritas Tinggi").length;
+    const kritis = articles.filter((a) => a.levelRisiko === "Kritis").length;
+    const baru = articles.filter((a) => a.validationStatus === "Baru").length;
+    const selesai = articles.filter((a) => a.validationStatus === "Selesai").length;
 
     const byKategori: Record<string, number> = {};
     const byTone: Record<string, number> = {};
     const byRisk: Record<string, number> = {};
 
-    demoArticles.forEach((a) => {
+    articles.forEach((a) => {
       byKategori[a.kategoriBerita] = (byKategori[a.kategoriBerita] || 0) + 1;
       byTone[a.tone] = (byTone[a.tone] || 0) + 1;
       byRisk[a.levelRisiko] = (byRisk[a.levelRisiko] || 0) + 1;
     });
 
     return { total, relevan, prioritas, kritis, baru, selesai, byKategori, byTone, byRisk };
-  }, []);
+  }, [articles]);
 
   const topRisks = useMemo(
-    () => demoArticles.filter((a) => a.levelRisiko === "Kritis" || a.levelRisiko === "Tinggi").slice(0, 5),
+    () => articles.filter((a) => a.levelRisiko === "Kritis" || a.levelRisiko === "Tinggi").slice(0, 5),
     []
   );
 
   const recentNews = useMemo(
-    () => [...demoArticles].sort((a, b) => new Date(b.tanggalTerbit).getTime() - new Date(a.tanggalTerbit).getTime()).slice(0, 8),
+    () => [...articles].sort((a, b) => new Date(b.tanggalTerbit).getTime() - new Date(a.tanggalTerbit).getTime()).slice(0, 8),
     []
   );
 

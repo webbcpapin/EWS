@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { demoArticles } from "@/data/demoData";
+import { useArticles } from "@/hooks/useArticles";
 
 import {
   TrendingUp,
@@ -14,13 +14,14 @@ import {
 } from "lucide-react";
 
 export default function Analisis() {
+  const { articles } = useArticles();
   const stats = useMemo(() => {
     const byKategori: Record<string, { count: number; positif: number; negatif: number; netral: number }> = {};
     const byMedia: Record<string, number> = {};
     const byBulan: Record<string, { positif: number; negatif: number; netral: number }> = {};
     const toneTrend: { bulan: string; positif: number; negatif: number; netral: number }[] = [];
 
-    demoArticles.forEach((a) => {
+    articles.forEach((a) => {
       // By Kategori
       if (!byKategori[a.kategoriBerita]) byKategori[a.kategoriBerita] = { count: 0, positif: 0, negatif: 0, netral: 0 };
       byKategori[a.kategoriBerita].count++;
@@ -42,15 +43,15 @@ export default function Analisis() {
       }
     });
 
-    const total = demoArticles.length;
-    const positif = demoArticles.filter((a) => a.tone === "Positif").length;
-    const negatif = demoArticles.filter((a) => a.tone === "Negatif").length;
-    const netral = demoArticles.filter((a) => a.tone === "Netral").length;
+    const total = articles.length;
+    const positif = articles.filter((a) => a.tone === "Positif").length;
+    const negatif = articles.filter((a) => a.tone === "Negatif").length;
+    const netral = articles.filter((a) => a.tone === "Netral").length;
 
-    const avgRelevansi = demoArticles.reduce((s, a) => s + a.skorRelevansi, 0) / total;
+    const avgRelevansi = articles.reduce((s, a) => s + a.skorRelevansi, 0) / total;
 
     return { byKategori, byMedia, toneTrend, total, positif, negatif, netral, avgRelevansi };
-  }, []);
+  }, [articles]);
 
   const topMedia = useMemo(() =>
     Object.entries(stats.byMedia).sort(([, a], [, b]) => b - a).slice(0, 10),

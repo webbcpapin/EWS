@@ -11,35 +11,36 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { demoArticles } from "@/data/demoData";
+import { useArticles } from "@/hooks/useArticles";
 import { cn } from "@/lib/utils";
 
 type ReportType = "harian" | "mingguan" | "bulanan" | "khusus";
 
 export default function Laporan() {
+  const { articles } = useArticles();
   const [selectedReport, setSelectedReport] = useState<ReportType>("bulanan");
 
   const stats = useMemo(() => {
-    const total = demoArticles.length;
-    const positif = demoArticles.filter((a) => a.tone === "Positif").length;
-    const negatif = demoArticles.filter((a) => a.tone === "Negatif").length;
-    const netral = demoArticles.filter((a) => a.tone === "Netral").length;
-    const kritis = demoArticles.filter((a) => a.levelRisiko === "Kritis").length;
-    const selesai = demoArticles.filter((a) => a.validationStatus === "Selesai").length;
-    const avgRelevansi = demoArticles.reduce((s, a) => s + a.skorRelevansi, 0) / total;
+    const total = articles.length;
+    const positif = articles.filter((a) => a.tone === "Positif").length;
+    const negatif = articles.filter((a) => a.tone === "Negatif").length;
+    const netral = articles.filter((a) => a.tone === "Netral").length;
+    const kritis = articles.filter((a) => a.levelRisiko === "Kritis").length;
+    const selesai = articles.filter((a) => a.validationStatus === "Selesai").length;
+    const avgRelevansi = articles.reduce((s, a) => s + a.skorRelevansi, 0) / total;
 
     const byKategori: Record<string, number> = {};
     const byMedia: Record<string, number> = {};
-    demoArticles.forEach((a) => {
+    articles.forEach((a) => {
       byKategori[a.kategoriBerita] = (byKategori[a.kategoriBerita] || 0) + 1;
       byMedia[a.namaMedia] = (byMedia[a.namaMedia] || 0) + 1;
     });
 
     return { total, positif, negatif, netral, kritis, selesai, avgRelevansi, byKategori, byMedia };
-  }, []);
+  }, [articles]);
 
   const topIssues = useMemo(() =>
-    demoArticles
+    articles
       .filter((a) => a.levelRisiko === "Kritis" || a.levelRisiko === "Tinggi")
       .slice(0, 5),
     []
@@ -57,7 +58,7 @@ export default function Laporan() {
       "Wilayah", "Status Validasi", "Status Tindak Lanjut", "Link"
     ].join(",");
 
-    const rows = demoArticles.map((a) => {
+    const rows = articles.map((a) => {
       const judul = '"' + a.judulBerita.replace(/"/g, '""') + '"';
       return [
         a.id, a.tanggalTerbit, a.namaMedia, a.namaWartawan, judul,

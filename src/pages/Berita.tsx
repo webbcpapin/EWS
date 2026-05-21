@@ -41,7 +41,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { demoArticles } from "@/data/demoData";
+import { useArticles } from "@/hooks/useArticles";
 import type { NewsArticle, ValidationStatus, FollowUpStatus } from "@/types/news";
 import { cn } from "@/lib/utils";
 
@@ -51,6 +51,7 @@ const VALIDATION_OPTIONS: ValidationStatus[] = ["Baru", "Valid", "Tidak Relevan"
 const FOLLOWUP_OPTIONS: FollowUpStatus[] = ["Belum Ditindaklanjuti", "Monitoring", "Koordinasi Internal", "Klarifikasi", "Publikasi Balasan", "Selesai"];
 
 export default function Berita() {
+  const { articles } = useArticles();
   const [search, setSearch] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -70,7 +71,7 @@ export default function Berita() {
   });
 
   const filtered = useMemo(() => {
-    let data = [...demoArticles];
+    let data = [...articles];
 
     // Search
     if (search) {
@@ -139,8 +140,8 @@ export default function Berita() {
     toast.success(`Status tindak lanjut diperbarui: "${status}"`);
   };
 
-  const kategoriList = [...new Set(demoArticles.map((a) => a.kategoriBerita))];
-  const tahunList = [...new Set(demoArticles.map((a) => a.tahun))].sort().reverse();
+  const kategoriList = [...new Set(articles.map((a) => a.kategoriBerita))];
+  const tahunList = [...new Set(articles.map((a) => a.tahun))].sort().reverse();
 
   return (
     <div className="space-y-5">

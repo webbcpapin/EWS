@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { demoArticles } from "@/data/demoData";
+import { useArticles } from "@/hooks/useArticles";
 import { cn } from "@/lib/utils";
 
 interface ActivityItem {
@@ -27,11 +27,12 @@ interface ActivityItem {
 }
 
 export default function Aktivitas() {
+  const { articles } = useArticles();
   const activities = useMemo<ActivityItem[]>(() => {
     const items: ActivityItem[] = [];
 
     // Generate activity log from articles
-    demoArticles.forEach((article) => {
+    articles.forEach((article) => {
       // Scraping activity
       items.push({
         id: `${article.id}-scraping`,
@@ -97,7 +98,7 @@ export default function Aktivitas() {
     items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     return items.slice(0, 80);
-  }, []);
+  }, [articles]);
 
   const grouped = useMemo(() => {
     const groups: Record<string, ActivityItem[]> = {};
