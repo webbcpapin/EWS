@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router";
 
 import {
   Search,
@@ -15,10 +16,17 @@ import {
   Check,
   X,
   MoreHorizontal,
+  ExternalLink,
+  Copy,
+  Upload,
+  Link,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -44,6 +52,7 @@ import { toast } from "sonner";
 import { useArticles } from "@/hooks/useArticles";
 import type { NewsArticle, ValidationStatus, FollowUpStatus } from "@/types/news";
 import { cn } from "@/lib/utils";
+import { extractUrlsFromText, readChatTextFile } from "@/lib/chatImport";
 
 const PAGE_SIZE = 10;
 
@@ -51,8 +60,26 @@ const VALIDATION_OPTIONS: ValidationStatus[] = ["Baru", "Valid", "Tidak Relevan"
 const FOLLOWUP_OPTIONS: FollowUpStatus[] = ["Belum Ditindaklanjuti", "Monitoring", "Koordinasi Internal", "Klarifikasi", "Publikasi Balasan", "Selesai"];
 
 export default function Berita() {
-  const { articles } = useArticles();
+  const {
+    articles,
+    manualArticles,
+    loading,
+    error,
+    source,
+    refresh,
+    updateArticle,
+    addManualArticle,
+    importManualLinks,
+    clearManualArticles,
+  } = useArticles();
+  const navigate = useNavigate();
+  const { articleId } = useParams();
   const [search, setSearch] = useState("");
+  const [manualLink, setManualLink] = useState("");
+  const [manualTitle, setManualTitle] = useState("");
+  const [manualNote, setManualNote] = useState("");
+  const [importingChat, setImportingChat] = useState(false);
+  const [importSummary, setImportSummary] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<keyof NewsArticle>("tanggalTerbit");
@@ -115,7 +142,7 @@ export default function Berita() {
     });
 
     return data;
-  }, [search, filters, sortField, sortDesc]);
+  }, [articles, search, filters, sortField, sortDesc]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -129,16 +156,96 @@ export default function Berita() {
     }
   };
 
-  const handleValidation = (article: NewsArticle, status: ValidationStatus) => {
-    article.validationStatus = status;
-    toast.success(`Berita ditandai sebagai "${status}"`);
+  const openArticle = (article: NewsArticle) => {
+    setDetailArticle(article);
+    navigate(`/berita/${article.id}`);
+  };
+
+  const closeDetail = () => {
     setDetailArticle(null);
+    if (articleId) navigate("/berita");
+  };
+
+  const handleValidation = (article: NewsArticle, status: ValidationStatus) => {
+    updateArticle(article.id, { validationStatus: status });
+    setDetailArticle({ ...article, validationStatus: status });
+    toast.success(`Berita ditandai sebagai "${status}"`);
   };
 
   const handleFollowUp = (article: NewsArticle, status: FollowUpStatus) => {
-    article.statusPenanganan = status;
+    updateArticle(article.id, { statusPenanganan: status });
+    setDetailArticle({ ...article, statusPenanganan: status });
     toast.success(`Status tindak lanjut diperbarui: "${status}"`);
   };
+
+  const copyLink = async (link: string) => {
+    await navigator.clipboard.writeText(link);
+    toast.success("Link artikel disalin");
+  };
+
+  const submitManualLink = () => {
+    if (!manualLink.trim()) {
+      toast.error("Masukkan link berita terlebih dahulu");
+      return;
+    }
+
+    try {
+      const result = addManualArticle({
+        link: manualLink,
+        title: manualTitle,
+        note: manualNote,
+        sourceLabel: "Input manual",
+      });
+
+      if (result.duplicate) {
+        toast.info("Link ini sudah ada di data manual");
+      } else {
+        toast.success("Link manual ditambahkan ke daftar berita");
+        setSearch(result.article.namaMedia);
+        setCurrentPage(1);
+      }
+
+      setManualLink("");
+      setManualTitle("");
+      setManualNote("");
+    } catch {
+      toast.error("Format link belum valid");
+    }
+  };
+
+  const handleChatUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setImportingChat(true);
+
+    try {
+      let totalUrls = 0;
+      let totalAdded = 0;
+      let totalSkipped = 0;
+
+      for (const file of Array.from(files)) {
+        const text = await readChatTextFile(file);
+        const urls = extractUrlsFromText(text);
+        const result = importManualLinks(urls, file.name);
+        totalUrls += urls.length;
+        totalAdded += result.added;
+        totalSkipped += result.skipped;
+      }
+
+      setImportSummary(`${totalAdded} link relevan/lokal ditambahkan, ${totalSkipped} duplikat/tidak relevan/tidak valid dari ${totalUrls} link ditemukan.`);
+      toast.success(`${totalAdded} link berita dari WhatsApp masuk ke daftar`);
+      setCurrentPage(1);
+    } catch (uploadError) {
+      toast.error(uploadError instanceof Error ? uploadError.message : "Gagal membaca export chat WhatsApp");
+    } finally {
+      setImportingChat(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!articleId) return;
+    const article = articles.find((item) => item.id === articleId);
+    if (article) setDetailArticle(article);
+  }, [articleId, articles]);
 
   const kategoriList = [...new Set(articles.map((a) => a.kategoriBerita))];
   const tahunList = [...new Set(articles.map((a) => a.tahun))].sort().reverse();
@@ -152,11 +259,18 @@ export default function Berita() {
           <p className="text-sm text-slate-500 mt-0.5">
             Kelola dan validasi berita media yang ter-scraping
           </p>
+          <div className="flex items-center gap-2 mt-2 text-[11px] text-slate-500">
+            <span className={cn("inline-flex h-2 w-2 rounded-full", source === "google-sheet" ? "bg-emerald-500" : "bg-amber-500")} />
+            <span>{source === "google-sheet" ? "Terhubung Google Sheet" : "Memakai data lokal"}</span>
+            <span>|</span>
+            <span>{manualArticles.length} input manual/chat</span>
+            {error && <span className="text-amber-600">({error})</span>}
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="text-xs h-8">
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-            Scraping Ulang
+          <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => void refresh()} disabled={loading}>
+            <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", loading && "animate-spin")} />
+            {loading ? "Memuat..." : "Scraping Ulang"}
           </Button>
           <Button size="sm" className="text-xs h-8 bg-[#1e3a5f] hover:bg-[#152a45]">
             <FileText className="w-3.5 h-3.5 mr-1.5" />
@@ -164,6 +278,74 @@ export default function Berita() {
           </Button>
         </div>
       </div>
+
+      {/* Manual & WhatsApp Import */}
+      <Card className="border border-slate-200 shadow-sm">
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Link className="w-4 h-4 text-[#1e3a5f]" />
+                <h2 className="text-sm font-semibold text-slate-800">Input Link Manual</h2>
+                <Badge variant="outline" className="text-[10px] h-5">Masuk Analisis</Badge>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3">
+                <Input
+                  value={manualLink}
+                  onChange={(event) => setManualLink(event.target.value)}
+                  placeholder="Tempel link berita dari wartawan/grup WhatsApp"
+                  className="text-sm"
+                />
+                <Input
+                  value={manualTitle}
+                  onChange={(event) => setManualTitle(event.target.value)}
+                  placeholder="Judul opsional"
+                  className="text-sm"
+                />
+              </div>
+              <Textarea
+                value={manualNote}
+                onChange={(event) => setManualNote(event.target.value)}
+                placeholder="Catatan singkat opsional, misalnya nama wartawan, grup, atau konteks isu"
+                className="min-h-[70px] text-sm"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" className="h-8 text-xs bg-[#1e3a5f] hover:bg-[#152a45]" onClick={submitManualLink}>
+                  <Plus className="w-3.5 h-3.5 mr-1.5" />
+                  Tambah Link
+                </Button>
+                {manualArticles.length > 0 && (
+                  <Button variant="outline" size="sm" className="h-8 text-xs text-red-600" onClick={clearManualArticles}>
+                    <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                    Bersihkan Manual
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Upload className="w-4 h-4 text-slate-500" />
+                <h2 className="text-sm font-semibold text-slate-800">Upload Export WhatsApp</h2>
+              </div>
+              <p className="text-xs text-slate-500 mb-3">
+                Terima file .zip atau .txt export chat. URL diekstrak, deduplikasi, lalu link lokal/relevan masuk daftar berita.
+              </p>
+              <Input
+                type="file"
+                accept=".zip,.txt,text/plain,application/zip"
+                multiple
+                disabled={importingChat}
+                onChange={(event) => void handleChatUpload(event.target.files)}
+                className="text-xs file:mr-3 file:border-0 file:bg-white file:text-slate-700"
+              />
+              {importSummary && (
+                <p className="text-[11px] text-emerald-700 mt-2">{importSummary}</p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Search & Filter Bar */}
       <Card className="border border-slate-200 shadow-sm">
@@ -324,7 +506,7 @@ export default function Berita() {
                 <tr
                   key={article.id}
                   className="hover:bg-slate-50/60 transition-colors cursor-pointer group"
-                  onClick={() => setDetailArticle(article)}
+                  onClick={() => openArticle(article)}
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-start gap-2">
@@ -412,7 +594,7 @@ export default function Berita() {
                       variant="ghost"
                       size="sm"
                       className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => { e.stopPropagation(); setDetailArticle(article); }}
+                      onClick={(e) => { e.stopPropagation(); openArticle(article); }}
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </Button>
@@ -471,7 +653,7 @@ export default function Berita() {
       </Card>
 
       {/* Detail Dialog */}
-      <Dialog open={!!detailArticle} onOpenChange={() => setDetailArticle(null)}>
+      <Dialog open={!!detailArticle} onOpenChange={(open) => { if (!open) closeDetail(); }}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           {detailArticle && (
             <>
@@ -578,15 +760,35 @@ export default function Berita() {
                 )}
 
                 {/* Link */}
-                {detailArticle.linkArtikel && (
-                  <a
-                    href={detailArticle.linkArtikel}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block text-xs text-blue-600 hover:underline break-all"
-                  >
-                    {detailArticle.linkArtikel}
-                  </a>
+                {detailArticle.linkArtikel ? (
+                  <div className="p-3 rounded-lg bg-white border border-slate-200">
+                    <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mb-2">Link Artikel</p>
+                    <a
+                      href={detailArticle.linkArtikel}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="block text-xs text-blue-600 hover:underline break-all"
+                    >
+                      {detailArticle.linkArtikel}
+                    </a>
+                    <div className="flex items-center gap-2 mt-3">
+                      <Button variant="outline" size="sm" className="h-7 text-[11px]" asChild>
+                        <a href={detailArticle.linkArtikel} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="w-3 h-3 mr-1" />
+                          Buka Link
+                        </a>
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => void copyLink(detailArticle.linkArtikel)}>
+                        <Copy className="w-3 h-3 mr-1" />
+                        Salin
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-100 text-xs text-amber-700">
+                    Link artikel belum terbaca dari hasil scraping. Periksa kolom link/url pada sumber data.
+                  </div>
                 )}
 
                 {/* Actions */}

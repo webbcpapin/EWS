@@ -47,12 +47,12 @@ export default function Home() {
 
   const topRisks = useMemo(
     () => articles.filter((a) => a.levelRisiko === "Kritis" || a.levelRisiko === "Tinggi").slice(0, 5),
-    []
+    [articles]
   );
 
   const recentNews = useMemo(
     () => [...articles].sort((a, b) => new Date(b.tanggalTerbit).getTime() - new Date(a.tanggalTerbit).getTime()).slice(0, 8),
-    []
+    [articles]
   );
 
   const statCards = [

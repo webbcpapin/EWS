@@ -43,7 +43,7 @@ export default function Laporan() {
     articles
       .filter((a) => a.levelRisiko === "Kritis" || a.levelRisiko === "Tinggi")
       .slice(0, 5),
-    []
+    [articles]
   );
 
   const generateReport = (type: ReportType) => {

@@ -49,7 +49,7 @@ export default function Alert() {
     });
 
     return data;
-  }, [riskFilter, sortField, sortDesc]);
+  }, [articles, riskFilter, sortField, sortDesc]);
 
   const summary = useMemo(() => {
     const kritis = articles.filter((a) => a.levelRisiko === "Kritis").length;
