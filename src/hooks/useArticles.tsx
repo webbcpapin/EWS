@@ -4,7 +4,7 @@ import { calculateRelevance, determineCategory, determineIssueType, getRiskLevel
 import type { ChatLinkCandidate } from "@/lib/chatImport";
 import type { FollowUpStatus, NewsArticle, SourceType, ValidationStatus } from "@/types/news";
 
-const EWS_BACKEND_URL = "https://script.google.com/macros/s/AKfycbzIixHz2lDh9RriKyKhp5CR0f43ZXvW4NoBbo-9G2mCSKZ5kZYZwe0324F4-PsEdMW4Yw/exec";
+const EWS_BACKEND_URL = "https://script.google.com/macros/s/AKfycbzYKZJ9pjLwccrw-tKu8BJJQbYJf6bSRpYJXXPixL7TZ0nO6mMiJnVZ1jRvTZ0Tx4wmpw/exec";
 const MANUAL_ARTICLES_KEY = "ews_manual_articles_v1";
 const MAX_CHAT_IMPORT_ARTICLES = 1000;
 
@@ -278,8 +278,12 @@ function pick(row: BackendRow, aliases: string[]) {
 }
 
 function mapBackendRow(row: BackendRow, index: number): NewsArticle {
-  const title = String(pick(row, ["judul_berita", "judul berita", "judul", "title", "headline"])).trim() || "(Tanpa judul)";
-  const content = String(pick(row, ["isi_berita", "isi berita", "isi", "ringkasan", "deskripsi", "content"])).trim() || title;
+  const link = String(pick(row, ["link_berita", "link berita", "link_artikel", "link artikel", "url", "link"])).trim();
+  const rawTitle = String(pick(row, ["judul_berita", "judul berita", "judul", "title", "headline"])).trim();
+  const rawContent = String(pick(row, ["isi_berita", "isi berita", "isi", "ringkasan", "deskripsi", "content"])).trim();
+  const fallbackTitle = link ? titleFromUrl(link) : "";
+  const title = rawTitle || rawContent || fallbackTitle || "(Tanpa judul)";
+  const content = rawContent || rawTitle || fallbackTitle || link || title;
   const tone = normalizeTone(pick(row, ["tone", "sentimen", "sentiment"]));
   const relevance = calculateRelevance(title, content);
   const riskLevel = getRiskLevel(tone, relevance.score, relevance.sensitiveMatches) as NewsArticle["levelRisiko"];
@@ -301,7 +305,7 @@ function mapBackendRow(row: BackendRow, index: number): NewsArticle {
     judulBerita: title,
     isiBerita: content,
     tone,
-    linkArtikel: String(pick(row, ["link_berita", "link berita", "link_artikel", "link artikel", "url", "link"]) || "").trim(),
+    linkArtikel: link,
     linkPdfArsip: String(pick(row, ["link_pdf", "link pdf", "pdf", "arsip_pdf", "arsip pdf"]) || "").trim(),
     skorRelevansi: relevance.score,
     statusRelevansi: relevance.status,
