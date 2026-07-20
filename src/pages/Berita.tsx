@@ -51,7 +51,7 @@ import {
 import { toast } from "sonner";
 import { useArticles } from "@/hooks/useArticles";
 import type { NewsArticle, ValidationStatus, FollowUpStatus } from "@/types/news";
-import { cn } from "@/lib/utils";
+import { cn, formatDateId, getDateTime } from "@/lib/utils";
 import { extractLinkCandidatesFromChatText, readChatTextFile } from "@/lib/chatImport";
 
 const PAGE_SIZE = 10;
@@ -131,8 +131,8 @@ export default function Berita() {
       data = data.filter((a) => a.statusRelevansi === filters.statusRelevansi);
     if (filters.tahun !== "Semua") data = data.filter((a) => a.tahun === Number(filters.tahun));
     if (filters.bulan !== "Semua") data = data.filter((a) => a.bulan.toLowerCase() === filters.bulan.toLowerCase());
-    if (filters.dateFrom) data = data.filter((a) => new Date(a.tanggalTerbit) >= new Date(filters.dateFrom));
-    if (filters.dateTo) data = data.filter((a) => new Date(a.tanggalTerbit) <= new Date(filters.dateTo));
+    if (filters.dateFrom) data = data.filter((a) => getDateTime(a.tanggalTerbit) >= getDateTime(filters.dateFrom));
+    if (filters.dateTo) data = data.filter((a) => getDateTime(a.tanggalTerbit) <= getDateTime(filters.dateTo));
 
     // Sort
     data.sort((a, b) => {
@@ -622,7 +622,7 @@ export default function Berita() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-[11px] text-slate-500 whitespace-nowrap">
-                    {new Date(article.tanggalTerbit).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                    {formatDateId(article.tanggalTerbit, { day: "numeric", month: "short" })}
                   </td>
                   <td className="px-4 py-3">
                     <Button
@@ -705,7 +705,7 @@ export default function Berita() {
                       <Badge variant="outline" className="text-[10px] h-5">{detailArticle.namaMedia}</Badge>
                       <Badge variant="outline" className="text-[10px] h-5">{detailArticle.namaWartawan}</Badge>
                       <span className="text-[11px] text-slate-400">
-                        {new Date(detailArticle.tanggalTerbit).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+                        {formatDateId(detailArticle.tanggalTerbit, { day: "numeric", month: "long", year: "numeric" })}
                       </span>
                     </div>
                   </div>

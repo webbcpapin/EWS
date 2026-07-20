@@ -2,9 +2,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { demoArticles } from "@/data/demoData";
 import { calculateRelevance, determineCategory, determineIssueType, getRiskLevel } from "@/lib/relevanceFilter";
 import type { ChatLinkCandidate } from "@/lib/chatImport";
+import { getDateTime } from "@/lib/utils";
 import type { FollowUpStatus, NewsArticle, SourceType, ValidationStatus } from "@/types/news";
 
-const EWS_BACKEND_URL = "https://script.google.com/macros/s/AKfycbzYKZJ9pjLwccrw-tKu8BJJQbYJf6bSRpYJXXPixL7TZ0nO6mMiJnVZ1jRvTZ0Tx4wmpw/exec";
+const EWS_BACKEND_URL = "https://script.google.com/macros/s/AKfycbyBpLbfBrEjHPZMNjRXvzRNXJdbKkt869Q67XBp0sVxRAEHuGfLwHfBslKziVC5jCipww/exec";
 const MANUAL_ARTICLES_KEY = "ews_manual_articles_v1";
 const MAX_CHAT_IMPORT_ARTICLES = 1000;
 
@@ -115,14 +116,14 @@ function parseIndonesianDate(raw: string) {
   return null;
 }
 
-function toDate(value: unknown) {
+function toDate(value: unknown, fallbackToToday = true) {
   const raw = String(value || "").trim();
-  if (!raw) return new Date();
+  if (!raw) return fallbackToToday ? new Date() : null;
   const direct = new Date(raw);
   if (!Number.isNaN(direct.getTime())) return direct;
   const local = parseIndonesianDate(raw);
   if (local && !Number.isNaN(local.getTime())) return local;
-  return new Date();
+  return fallbackToToday ? new Date() : null;
 }
 
 
@@ -131,8 +132,7 @@ function monthName(date: Date) {
 }
 
 function articleTime(article: NewsArticle) {
-  const time = new Date(article.tanggalTerbit).getTime();
-  return Number.isNaN(time) ? 0 : time;
+  return getDateTime(article.tanggalTerbit);
 }
 
 function sortNewestFirst(list: NewsArticle[]) {
@@ -288,16 +288,16 @@ function mapBackendRow(row: BackendRow, index: number): NewsArticle {
   const relevance = calculateRelevance(title, content);
   const riskLevel = getRiskLevel(tone, relevance.score, relevance.sensitiveMatches) as NewsArticle["levelRisiko"];
   const validationStatus = normalizeValidationStatus(pick(row, ["status_validasi", "status validasi", "validation_status", "status"]));
-  const publishedDate = toDate(pick(row, ["tanggal_terbit", "tanggal terbit", "tanggal", "date", "published_at"]));
+  const publishedDate = toDate(pick(row, ["tanggal_terbit", "tanggal terbit", "tanggal", "date", "published_at"]), false);
   const now = new Date().toISOString();
 
   return {
     id: String(pick(row, ["id", "id_berita", "id berita"]) || `sheet_${index + 1}`),
     idBerita: Number(pick(row, ["no_sumber", "no sumber", "nomor", "no"]) || index + 1),
     tanggalScraping: now,
-    tanggalTerbit: publishedDate.toISOString().slice(0, 10),
-    bulan: String(pick(row, ["bulan", "month"]) || monthName(publishedDate)).trim(),
-    tahun: Number(pick(row, ["tahun", "year"]) || publishedDate.getFullYear()),
+    tanggalTerbit: publishedDate ? publishedDate.toISOString().slice(0, 10) : "",
+    bulan: String(pick(row, ["bulan", "month"]) || (publishedDate ? monthName(publishedDate) : "")).trim(),
+    tahun: Number(pick(row, ["tahun", "year"]) || (publishedDate ? publishedDate.getFullYear() : 0)),
     sumberKonten: normalizeSource(pick(row, ["sumber", "source", "sumber_konten", "sumber konten"])),
     kategoriBerita: (String(pick(row, ["kategori", "kategori_berita", "kategori berita", "category"]) || "Lainnya").trim() || "Lainnya") as NewsArticle["kategoriBerita"],
     namaMedia: String(pick(row, ["media", "nama_media", "nama media", "publisher"]) || "").trim(),

@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useArticles } from "@/hooks/useArticles";
-import { cn } from "@/lib/utils";
+import { cn, formatDateId, getDateTime } from "@/lib/utils";
 
 export default function Alert() {
   const { articles } = useArticles();
@@ -44,8 +44,8 @@ export default function Alert() {
         return sortDesc ? b.skorRelevansi - a.skorRelevansi : a.skorRelevansi - b.skorRelevansi;
       }
       return sortDesc
-        ? new Date(b.tanggalTerbit).getTime() - new Date(a.tanggalTerbit).getTime()
-        : new Date(a.tanggalTerbit).getTime() - new Date(b.tanggalTerbit).getTime();
+        ? getDateTime(b.tanggalTerbit) - getDateTime(a.tanggalTerbit)
+        : getDateTime(a.tanggalTerbit) - getDateTime(b.tanggalTerbit);
     });
 
     return data;
@@ -241,7 +241,7 @@ export default function Alert() {
                       </span>
                       <span className="text-[10px] text-slate-300">|</span>
                       <span className="text-[10px] text-slate-400">
-                        {new Date(article.tanggalTerbit).toLocaleDateString("id-ID")}
+                        {formatDateId(article.tanggalTerbit)}
                       </span>
                     </div>
 

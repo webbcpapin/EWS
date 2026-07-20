@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useArticles } from "@/hooks/useArticles";
-import { cn } from "@/lib/utils";
+import { cn, formatDateId, getDateTime } from "@/lib/utils";
 
 export default function Home() {
   const { articles } = useArticles();
@@ -51,7 +51,7 @@ export default function Home() {
   );
 
   const recentNews = useMemo(
-    () => [...articles].sort((a, b) => new Date(b.tanggalTerbit).getTime() - new Date(a.tanggalTerbit).getTime()).slice(0, 8),
+    () => [...articles].sort((a, b) => getDateTime(b.tanggalTerbit) - getDateTime(a.tanggalTerbit)).slice(0, 8),
     [articles]
   );
 
@@ -278,7 +278,7 @@ export default function Home() {
                         <span className="text-[11px] text-slate-500">{article.namaMedia}</span>
                         <span className="text-[11px] text-slate-300">|</span>
                         <span className="text-[11px] text-slate-500">
-                          {new Date(article.tanggalTerbit).toLocaleDateString("id-ID")}
+                          {formatDateId(article.tanggalTerbit)}
                         </span>
                         <Badge
                           variant="outline"
