@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { demoArticles } from "@/data/demoData";
 import { calculateRelevance, determineCategory, determineIssueType, getRiskLevel } from "@/lib/relevanceFilter";
+import type { ChatLinkCandidate } from "@/lib/chatImport";
 import type { FollowUpStatus, NewsArticle, SourceType, ValidationStatus } from "@/types/news";
 
 const EWS_BACKEND_URL = "https://script.google.com/macros/s/AKfycbzIixHz2lDh9RriKyKhp5CR0f43ZXvW4NoBbo-9G2mCSKZ5kZYZwe0324F4-PsEdMW4Yw/exec";
@@ -25,6 +26,7 @@ type ArticlesContextValue = {
   updateArticle: (id: string, patch: Partial<NewsArticle>) => void;
   addManualArticle: (input: ManualArticleInput) => { article: NewsArticle; duplicate: boolean };
   importManualLinks: (links: string[], sourceLabel?: string) => { added: number; skipped: number };
+  importManualCandidates: (candidates: ChatLinkCandidate[], sourceLabel?: string) => { added: number; skipped: number };
   clearManualArticles: () => void;
 };
 
@@ -68,16 +70,73 @@ function normalizeFollowUpStatus(value: unknown): FollowUpStatus {
   return "Belum Ditindaklanjuti";
 }
 
-function toIsoDate(value: unknown) {
-  const raw = String(value || "").trim();
-  if (!raw) return new Date().toISOString().slice(0, 10);
-  const date = new Date(raw);
-  if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
-  return raw;
+function parseIndonesianDate(raw: string) {
+  const normalized = raw.trim().toLowerCase();
+  const months: Record<string, number> = {
+    januari: 0,
+    jan: 0,
+    februari: 1,
+    feb: 1,
+    maret: 2,
+    mar: 2,
+    april: 3,
+    apr: 3,
+    mei: 4,
+    juni: 5,
+    jun: 5,
+    juli: 6,
+    jul: 6,
+    agustus: 7,
+    agu: 7,
+    september: 8,
+    sep: 8,
+    oktober: 9,
+    okt: 9,
+    november: 10,
+    nov: 10,
+    desember: 11,
+    des: 11,
+  };
+
+  const slash = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (slash) {
+    const day = Number(slash[1]);
+    const month = Number(slash[2]) - 1;
+    const yearRaw = Number(slash[3]);
+    const year = yearRaw < 100 ? (yearRaw < 50 ? 2000 + yearRaw : 1900 + yearRaw) : yearRaw;
+    return new Date(year, month, day);
+  }
+
+  const words = normalized.match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/);
+  if (words && months[words[2]] !== undefined) {
+    return new Date(Number(words[3]), months[words[2]], Number(words[1]));
+  }
+
+  return null;
 }
+
+function toDate(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return new Date();
+  const direct = new Date(raw);
+  if (!Number.isNaN(direct.getTime())) return direct;
+  const local = parseIndonesianDate(raw);
+  if (local && !Number.isNaN(local.getTime())) return local;
+  return new Date();
+}
+
 
 function monthName(date: Date) {
   return date.toLocaleDateString("id-ID", { month: "long" });
+}
+
+function articleTime(article: NewsArticle) {
+  const time = new Date(article.tanggalTerbit).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function sortNewestFirst(list: NewsArticle[]) {
+  return [...list].sort((a, b) => articleTime(b) - articleTime(a) || b.updatedAt.localeCompare(a.updatedAt));
 }
 
 function normalizeUrl(url: string) {
@@ -142,8 +201,65 @@ function inferSourceType(domain: string): SourceType {
   return localHints.some((hint) => lower.includes(hint)) ? "media lokal" : "media nasional";
 }
 
-function shouldImportFromChat(article: NewsArticle) {
-  return article.sumberKonten === "media lokal" || article.skorRelevansi >= 40;
+function isBcPangkalpinangContext(text: string) {
+  const lower = text.toLowerCase();
+  const officeHints = [
+    "bea cukai pangkalpinang",
+    "bc pangkalpinang",
+    "beacukai pangkalpinang",
+    "bea cukai papin",
+    "beacukaipapin",
+    "kppbc pangkalpinang",
+    "kppbc tmp c pangkalpinang",
+    "bea cukai bangka",
+    "bea cukai babel",
+  ];
+  const issueHints = [
+    "bea cukai",
+    "beacukai",
+    "cukai",
+    "kepabeanan",
+    "pabean",
+    "rokok ilegal",
+    "rokok tanpa pita cukai",
+    "rokok polos",
+    "pita cukai",
+    "penyelundupan",
+    "penindakan",
+    "barang kiriman",
+    "ekspor",
+    "impor",
+    "timah",
+  ];
+  const locationHints = [
+    "pangkalpinang",
+    "pangkal pinang",
+    "bangka",
+    "babel",
+    "pangkalbalam",
+    "muntok",
+    "belinyu",
+    "sungailiat",
+    "toboali",
+    "koba",
+  ];
+
+  const directOffice = officeHints.some((hint) => lower.includes(hint));
+  const hasIssue = issueHints.some((hint) => lower.includes(hint));
+  const hasLocation = locationHints.some((hint) => lower.includes(hint));
+  return directOffice || (hasIssue && hasLocation);
+}
+
+function shouldImportFromChat(article: NewsArticle, rawText = "") {
+  const searchable = [
+    article.judulBerita,
+    article.isiBerita,
+    article.namaMedia,
+    article.namaWartawan,
+    article.linkArtikel,
+    rawText,
+  ].join(" ");
+  return isBcPangkalpinangContext(searchable) && article.statusRelevansi !== "Tidak Relevan";
 }
 
 function normalizeKey(key: string) {
@@ -168,15 +284,16 @@ function mapBackendRow(row: BackendRow, index: number): NewsArticle {
   const relevance = calculateRelevance(title, content);
   const riskLevel = getRiskLevel(tone, relevance.score, relevance.sensitiveMatches) as NewsArticle["levelRisiko"];
   const validationStatus = normalizeValidationStatus(pick(row, ["status_validasi", "status validasi", "validation_status", "status"]));
+  const publishedDate = toDate(pick(row, ["tanggal_terbit", "tanggal terbit", "tanggal", "date", "published_at"]));
   const now = new Date().toISOString();
 
   return {
     id: String(pick(row, ["id", "id_berita", "id berita"]) || `sheet_${index + 1}`),
     idBerita: Number(pick(row, ["no_sumber", "no sumber", "nomor", "no"]) || index + 1),
     tanggalScraping: now,
-    tanggalTerbit: toIsoDate(pick(row, ["tanggal_terbit", "tanggal terbit", "tanggal", "date", "published_at"])),
-    bulan: String(pick(row, ["bulan", "month"]) || "").trim(),
-    tahun: Number(pick(row, ["tahun", "year"]) || new Date().getFullYear()),
+    tanggalTerbit: publishedDate.toISOString().slice(0, 10),
+    bulan: String(pick(row, ["bulan", "month"]) || monthName(publishedDate)).trim(),
+    tahun: Number(pick(row, ["tahun", "year"]) || publishedDate.getFullYear()),
     sumberKonten: normalizeSource(pick(row, ["sumber", "source", "sumber_konten", "sumber konten"])),
     kategoriBerita: (String(pick(row, ["kategori", "kategori_berita", "kategori berita", "category"]) || "Lainnya").trim() || "Lainnya") as NewsArticle["kategoriBerita"],
     namaMedia: String(pick(row, ["media", "nama_media", "nama media", "publisher"]) || "").trim(),
@@ -209,7 +326,7 @@ function createManualArticle(input: ManualArticleInput, index: number): NewsArti
   const link = normalizeUrl(input.link);
   const domain = domainFromUrl(link);
   const title = (input.title || titleFromUrl(link)).trim() || link;
-  const content = [title, input.note, link].filter(Boolean).join(" ");
+  const content = [title, input.note, input.sender, input.sourceLabel, link].filter(Boolean).join(" ");
   const tone = inferTone(content);
   const relevance = calculateRelevance(title, content);
   const riskLevel = getRiskLevel(tone, relevance.score, relevance.sensitiveMatches) as NewsArticle["levelRisiko"];
@@ -245,7 +362,7 @@ function createManualArticle(input: ManualArticleInput, index: number): NewsArti
       : "Verifikasi link dan masukkan ke monitoring media",
     statusPenanganan: "Belum Ditindaklanjuti",
     pic: "Tim Humas",
-    catatanVerifikator: input.sourceLabel ? `Diimpor dari ${input.sourceLabel}` : "Input manual",
+    catatanVerifikator: [input.sourceLabel ? `Diimpor dari ${input.sourceLabel}` : "Input manual", input.sender ? `Pengirim: ${input.sender}` : ""].filter(Boolean).join(" | "),
     validationStatus: "Perlu Review",
     createdAt: now,
     updatedAt: now,
@@ -328,7 +445,7 @@ export function ArticlesProvider({ children }: { children: React.ReactNode }) {
     return { article, duplicate };
   }, [manualArticles]);
 
-  const importManualLinks = useCallback((links: string[], sourceLabel?: string) => {
+  const importManualCandidates = useCallback((candidates: ChatLinkCandidate[], sourceLabel?: string) => {
     let added = 0;
     let skipped = 0;
 
@@ -336,16 +453,25 @@ export function ArticlesProvider({ children }: { children: React.ReactNode }) {
       const seen = new Set(current.map((article) => article.linkArtikel.toLowerCase()));
       const imported: NewsArticle[] = [];
 
-      links.forEach((link, index) => {
+      candidates.forEach((candidate, index) => {
         if (imported.length >= MAX_CHAT_IMPORT_ARTICLES) {
           skipped += 1;
           return;
         }
 
         try {
-          const article = createManualArticle({ link, sourceLabel }, current.length + index);
+          const article = createManualArticle(
+            {
+              link: candidate.url,
+              note: candidate.context,
+              sourceLabel: candidate.sourceLabel || sourceLabel,
+              receivedAt: candidate.receivedAt,
+              sender: candidate.sender,
+            },
+            current.length + index
+          );
           const key = article.linkArtikel.toLowerCase();
-          if (seen.has(key) || !shouldImportFromChat(article)) {
+          if (seen.has(key) || !shouldImportFromChat(article, candidate.rawMessage)) {
             skipped += 1;
             return;
           }
@@ -357,13 +483,23 @@ export function ArticlesProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
-      const updated = [...imported, ...current];
+      const updated = sortNewestFirst([...imported, ...current]);
       saveManualArticles(updated);
       return updated;
     });
 
     return { added, skipped };
   }, []);
+
+  const importManualLinks = useCallback((links: string[], sourceLabel?: string) => {
+    const candidates = links.map((link) => ({
+      url: link,
+      context: "Link berita dari input manual / export chat WhatsApp.",
+      rawMessage: link,
+      sourceLabel,
+    }));
+    return importManualCandidates(candidates, sourceLabel);
+  }, [importManualCandidates]);
 
   const clearManualArticles = useCallback(() => {
     setManualArticles([]);
@@ -374,7 +510,7 @@ export function ArticlesProvider({ children }: { children: React.ReactNode }) {
     void refresh();
   }, [refresh]);
 
-  const articles = useMemo(() => [...manualArticles, ...remoteArticles], [manualArticles, remoteArticles]);
+  const articles = useMemo(() => sortNewestFirst([...manualArticles, ...remoteArticles]), [manualArticles, remoteArticles]);
 
   const value = useMemo(
     () => ({
@@ -387,6 +523,7 @@ export function ArticlesProvider({ children }: { children: React.ReactNode }) {
       updateArticle,
       addManualArticle,
       importManualLinks,
+      importManualCandidates,
       clearManualArticles,
     }),
     [
@@ -399,6 +536,7 @@ export function ArticlesProvider({ children }: { children: React.ReactNode }) {
       updateArticle,
       addManualArticle,
       importManualLinks,
+      importManualCandidates,
       clearManualArticles,
     ]
   );

@@ -1,11 +1,90 @@
 const URL_PATTERN = /https?:\/\/[^\s<>"']+/gi;
 const TEXT_DECODER = new TextDecoder("utf-8");
 
-function cleanUrl(url: string) {
-  return url
+export type ChatLinkCandidate = {
+  url: string;
+  context: string;
+  rawMessage: string;
+  sourceLabel?: string;
+  receivedAt?: string;
+  sender?: string;
+};
+
+type ChatMessage = {
+  body: string;
+  raw: string;
+  receivedAt?: string;
+  sender?: string;
+};
+
+function cleanText(value: string) {
+  return value
     .replace(/[\u200e\u200f]/g, "")
+    .replace(/\u202f/g, " ")
+    .trim();
+}
+
+function cleanUrl(url: string) {
+  return cleanText(url)
     .replace(/[)\].,;!?]+$/g, "")
     .trim();
+}
+
+function normalizeTwoDigitYear(year: number) {
+  return year < 50 ? 2000 + year : 1900 + year;
+}
+
+function parseWhatsAppTimestamp(datePart: string, timePart: string) {
+  const [dayRaw, monthRaw, yearRaw] = datePart.split(/[/-]/).map((part) => Number(part));
+  if (!dayRaw || !monthRaw || !yearRaw) return undefined;
+
+  const [hourRaw, minuteRaw, secondRaw = 0] = timePart.split(/[.:]/).map((part) => Number(part));
+  const year = yearRaw < 100 ? normalizeTwoDigitYear(yearRaw) : yearRaw;
+  const date = new Date(year, monthRaw - 1, dayRaw, hourRaw || 0, minuteRaw || 0, secondRaw || 0);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString();
+}
+
+function parseMessageStart(line: string) {
+  const normalized = cleanText(line);
+  const match = normalized.match(/^\[?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}),\s*(\d{1,2}[.:]\d{2}(?:[.:]\d{2})?)\]?\s+-?\s*([^:]+?)\s*:\s*(.*)$/);
+  if (!match) return null;
+
+  return {
+    receivedAt: parseWhatsAppTimestamp(match[1], match[2]),
+    sender: cleanText(match[3]),
+    body: cleanText(match[4]),
+  };
+}
+
+function parseWhatsAppMessages(text: string) {
+  const messages: ChatMessage[] = [];
+  let current: ChatMessage | null = null;
+
+  for (const line of text.split(/\r?\n/)) {
+    const parsed = parseMessageStart(line);
+    if (parsed) {
+      if (current) messages.push(current);
+      current = {
+        body: parsed.body,
+        raw: cleanText(line),
+        receivedAt: parsed.receivedAt,
+        sender: parsed.sender,
+      };
+      continue;
+    }
+
+    if (current) {
+      const addition = cleanText(line);
+      if (addition) {
+        current.body = `${current.body}\n${addition}`.trim();
+        current.raw = `${current.raw}\n${addition}`.trim();
+      }
+    }
+  }
+
+  if (current) messages.push(current);
+  return messages;
 }
 
 export function extractUrlsFromText(text: string) {
@@ -20,6 +99,46 @@ export function extractUrlsFromText(text: string) {
   });
 
   return [...new Set(urls)];
+}
+
+export function extractLinkCandidatesFromChatText(text: string, sourceLabel?: string): ChatLinkCandidate[] {
+  const messages = parseWhatsAppMessages(text);
+  const candidates: ChatLinkCandidate[] = [];
+  const seen = new Set<string>();
+
+  const addCandidate = (candidate: ChatLinkCandidate) => {
+    const key = candidate.url.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push(candidate);
+  };
+
+  messages.forEach((message) => {
+    const urls = extractUrlsFromText(message.body);
+    urls.forEach((url) => {
+      addCandidate({
+        url,
+        context: message.body,
+        rawMessage: message.raw,
+        receivedAt: message.receivedAt,
+        sender: message.sender,
+        sourceLabel,
+      });
+    });
+  });
+
+  if (candidates.length > 0) return candidates;
+
+  extractUrlsFromText(text).forEach((url) => {
+    addCandidate({
+      url,
+      context: "Link ditemukan dari teks export WhatsApp.",
+      rawMessage: url,
+      sourceLabel,
+    });
+  });
+
+  return candidates;
 }
 
 async function inflateRaw(data: Uint8Array) {

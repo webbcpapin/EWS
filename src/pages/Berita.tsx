@@ -52,7 +52,7 @@ import { toast } from "sonner";
 import { useArticles } from "@/hooks/useArticles";
 import type { NewsArticle, ValidationStatus, FollowUpStatus } from "@/types/news";
 import { cn } from "@/lib/utils";
-import { extractUrlsFromText, readChatTextFile } from "@/lib/chatImport";
+import { extractLinkCandidatesFromChatText, readChatTextFile } from "@/lib/chatImport";
 
 const PAGE_SIZE = 10;
 
@@ -69,7 +69,7 @@ export default function Berita() {
     refresh,
     updateArticle,
     addManualArticle,
-    importManualLinks,
+    importManualCandidates,
     clearManualArticles,
   } = useArticles();
   const navigate = useNavigate();
@@ -95,6 +95,9 @@ export default function Berita() {
     sumber: "Semua",
     statusRelevansi: "Semua",
     tahun: "Semua",
+    bulan: "Semua",
+    dateFrom: "",
+    dateTo: "",
   });
 
   const filtered = useMemo(() => {
@@ -127,6 +130,9 @@ export default function Berita() {
     if (filters.statusRelevansi !== "Semua")
       data = data.filter((a) => a.statusRelevansi === filters.statusRelevansi);
     if (filters.tahun !== "Semua") data = data.filter((a) => a.tahun === Number(filters.tahun));
+    if (filters.bulan !== "Semua") data = data.filter((a) => a.bulan.toLowerCase() === filters.bulan.toLowerCase());
+    if (filters.dateFrom) data = data.filter((a) => new Date(a.tanggalTerbit) >= new Date(filters.dateFrom));
+    if (filters.dateTo) data = data.filter((a) => new Date(a.tanggalTerbit) <= new Date(filters.dateTo));
 
     // Sort
     data.sort((a, b) => {
@@ -224,14 +230,14 @@ export default function Berita() {
 
       for (const file of Array.from(files)) {
         const text = await readChatTextFile(file);
-        const urls = extractUrlsFromText(text);
-        const result = importManualLinks(urls, file.name);
-        totalUrls += urls.length;
+        const candidates = extractLinkCandidatesFromChatText(text, file.name);
+        const result = importManualCandidates(candidates, file.name);
+        totalUrls += candidates.length;
         totalAdded += result.added;
         totalSkipped += result.skipped;
       }
 
-      setImportSummary(`${totalAdded} link relevan/lokal ditambahkan, ${totalSkipped} duplikat/tidak relevan/tidak valid dari ${totalUrls} link ditemukan.`);
+      setImportSummary(`${totalAdded} link terkait Bea Cukai Pangkalpinang ditambahkan, ${totalSkipped} duplikat/tidak relevan/tidak valid dari ${totalUrls} link ditemukan.`);
       toast.success(`${totalAdded} link berita dari WhatsApp masuk ke daftar`);
       setCurrentPage(1);
     } catch (uploadError) {
@@ -249,6 +255,7 @@ export default function Berita() {
 
   const kategoriList = [...new Set(articles.map((a) => a.kategoriBerita))];
   const tahunList = [...new Set(articles.map((a) => a.tahun))].sort().reverse();
+  const bulanList = [...new Set(articles.map((a) => a.bulan).filter(Boolean))];
 
   return (
     <div className="space-y-5">
@@ -329,7 +336,7 @@ export default function Berita() {
                 <h2 className="text-sm font-semibold text-slate-800">Upload Export WhatsApp</h2>
               </div>
               <p className="text-xs text-slate-500 mb-3">
-                Terima file .zip atau .txt export chat. URL diekstrak, deduplikasi, lalu link lokal/relevan masuk daftar berita.
+                Terima file .zip atau .txt export chat. URL, tanggal, pengirim, dan konteks pesan dibaca lalu hanya berita terkait Bea Cukai Pangkalpinang yang masuk daftar.
               </p>
               <Input
                 type="file"
@@ -372,7 +379,7 @@ export default function Berita() {
           </div>
 
           {filterOpen && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4 pt-4 border-t border-slate-100">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-3 mt-4 pt-4 border-t border-slate-100">
               <Select
                 value={filters.kategori}
                 onValueChange={(v) => { setFilters((f) => ({ ...f, kategori: v })); setCurrentPage(1); }}
@@ -459,6 +466,34 @@ export default function Berita() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select
+                value={filters.bulan}
+                onValueChange={(v) => { setFilters((f) => ({ ...f, bulan: v })); setCurrentPage(1); }}
+              >
+                <SelectTrigger className="text-xs h-8">
+                  <SelectValue placeholder="Bulan" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Semua">Semua Bulan</SelectItem>
+                  {bulanList.map((bulan) => (
+                    <SelectItem key={bulan} value={bulan}>{bulan}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                type="date"
+                value={filters.dateFrom}
+                onChange={(event) => { setFilters((f) => ({ ...f, dateFrom: event.target.value })); setCurrentPage(1); }}
+                className="text-xs h-8"
+                aria-label="Tanggal mulai"
+              />
+              <Input
+                type="date"
+                value={filters.dateTo}
+                onChange={(event) => { setFilters((f) => ({ ...f, dateTo: event.target.value })); setCurrentPage(1); }}
+                className="text-xs h-8"
+                aria-label="Tanggal akhir"
+              />
             </div>
           )}
         </CardContent>
