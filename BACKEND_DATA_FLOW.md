@@ -19,3 +19,9 @@ File `apps-script/Code.gs` adalah referensi backend untuk ditempel ke Google App
 - `SHEET_ID`: ID spreadsheet Google Sheet.
 - `SHEET_NAME`: `Berita` jika memakai nama default.
 - `API_KEY`: token rahasia untuk operasi `POST`/import.
+
+
+## Perbaikan tanggal published
+
+Jika data lama terlanjur memakai tanggal scraping sebagai tanggal terbit, jalankan fungsi
+epairPublishedDates(50) dari Apps Script editor. Fungsi ini mencari baris yang tanggalnya mencurigakan, mengambil metadata datePublished/tanggal artikel dari URL berita, lalu memperbarui 	anggal, 	anggal_iso, 	ahun, dan ulan. 	anggal_scraping tetap dipertahankan sebagai tanggal import/scraping.
